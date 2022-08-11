@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <script type="module">
+
+        import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+
+        //------------------------------------------------------------------
+        // Configuration of the plot size
+        //------------------------------------------------------------------
+
+        const width = 1000;
+        const height = 800;
+        const marginTop = 20;
+        const marginRight = 20;
+        const marginBottom = 30;
+        const marginLeft = 60;
+
+        //------------------------------------------------------------------
+        // Global variables used to draw stuff
+        //------------------------------------------------------------------
+
+        var divWidgets
+        var divSvg
+
+
+        var zoom_transform
+        var max_time
+        var max_y
+        var rectangles
+        var jobs
+        var view_types = ["job_stack", "job_pack", "nodes"]
+        var current_view_type = view_types[0]
+        var color_schemes = ["jobs_divergent", "slowdown"]
+        var current_color_scheme = color_schemes[0]
+        var job_selected = -1
+
+        divWidgets = d3.select("#widgets_div")
+        divSvg = d3.select("#svg_div")
+
+        //------------------------------------------------------------------
+        // The coloring function
+        //------------------------------------------------------------------
+
+        var get_color = function (job_id) {
+            if (job_id < 0 || (job_selected >= 0 && job_selected != job_id))
+                return '#B3B3B3' // Grey
+            var j = jobs.filter((d) => d.id == job_id)
+            // console.log(j)
+            if (j.length != 1)
+                console.warning("Could not find job " + job_id + "entry")
+            var c = j[0].c_slowdown
+            if (current_color_scheme == "jobs_divergent")
+                c = j[0].c_divergent
+            //console.log("Color for job "+job_id+" is "+c+" from entry "+j)
+            return c
+        }
+
+        //------------------------------------------------------------------
+        // The main drawing function
+        //------------------------------------------------------------------
+
+        function update_plot() {
+
+
+            if (rectangles == undefined || jobs == undefined) {
+                console.log("Waiting for input data...")
+                return
+            }
+
+            var rectangles_data = rectangles.filter(function (d) {
+                return d.view == current_view_type
+            })
+
+            max_time = d3.max(rectangles_data, (d) => d.x + d.width)
+            const x = zoom_transform.rescaleX(d3.scaleLinear().range([marginLeft, width - marginRight]).domain([0, max_time]))
+            max_y = d3.max(rectangles_data, (d) => d.y)
+            const y = zoom_transform.rescaleY(d3.scaleLinear().range([height - marginBottom, marginTop]).domain([0, max_y]))
+            //console.log('max_time='+max_time+' max_y='+max_y)
+            //console.log('y0='+y(0)+' y16='+y(16))    
+
+            var rects = svg.selectAll("rect.z")
+                .data(rectangles_data
+                    .filter(function (d) {
+                        //Just do not spend time on rectangles that will not be in the plot area
+                        //Rely on clipping for the esthetics
+                        return x(d.x + d.width) > marginLeft && x(d.x) < width - marginRight &&
+                            y(d.y - d.height) > marginTop && y(d.y) < height - marginBottom
+                    })
+                    ,
+                    function (d) { return d.rect_id })
+
+            function get_x(d) { return Math.max(marginLeft, x(d.x)); }
+            function get_y(d) { return Math.max(marginTop, y(d.y)); }
+            function get_width(d) { return Math.min(x(d.x + d.width), width - marginRight) - get_x(d) }
+            function get_height(d) { return Math.min(y(d.y - d.height), height - marginBottom) - get_y(d) }
+
+            rects.exit().remove()
+            rects.style("fill", (d) => get_color(d.job_id))
+                //.attr("transform", zoom_transform)
+                .attr("x", get_x).attr("y", get_y)
+                .attr("height", get_height).attr("width", get_width)
+            //.attr("clip-path","url(#background)")
+            rects.enter()
+                .append("rect")
+                .style("stroke", "gray")
+                .style("fill", (d) => get_color(d.job_id))
+                .attr("x", get_x).attr("y", get_y).attr("height", get_height).attr("width", get_width)
+                .attr("class", "z")
+                //.attr("clip-path","url(#background)")
+                .on('mouseover', (event, d) => {
+                    tooltip.transition().duration(200).style("opacity", .9);
+                    tooltip.text(get_job_description(event, d))//.attr("x",event.clientX).attr("y", event.clientY);
+                })
+                .on('mouseout', d => {
+                    tooltip.transition().duration(500).style("opacity", 0);
+                })
+                .on('click', (event, d) => {
+                    if (job_selected >= 0)
+                        job_selected = -1
+                    else
+                        job_selected = d.job_id
+                    update_plot()
+                })
+            //.on('dblclick', (event, d) => { svg.call(zoom).call(zoom.transform, d3.zoomIdentity)}) 
+
+
+            //var y2=zoom_transform.rescaleY(y)
+            gy.attr("transform", `translate(${marginLeft},0)`)
+                .call(d3.axisLeft(y)).transition().duration(500);
+
+            gx.attr("transform", `translate(0,${height - marginBottom})`)
+                .call(d3.axisBottom(x)).transition().duration(500);
+
+            // export_svg(svg)
+        }
+
+        //------------------------------------------------------------------
+        // Radio button to select the view type
+        //------------------------------------------------------------------
+
+        divWidgets.append("text").text("\u00A0View type:\u00A0")
+        var radio_view_type = divWidgets.selectAll("span")
+            .data(view_types)
+            .enter().append("span")
+            .attr("name", "view_type")
+        radio_view_type
+            .append("input")
+            .attr("type", "radio")
+            .attr("name", "mode")
+            .attr("value", function (d) { return d; })
+            .property("checked", function (d) {
+                //console.log("view type "+d+" / "+ current_view_type+"=>"+(d==current_view_type));
+                return d == current_view_type;
+            })
+            .on("change", function (d) {
+                current_view_type = d.srcElement.value
+                console.log("View type changed to " + d.srcElement.value);
+                update_plot()
+            })
+        radio_view_type
+            .append("label")
+            .text(function (d) { return d; })
+
+        //------------------------------------------------------------------
+        // Radio button to select the color scheme
+        //------------------------------------------------------------------
+
+        divWidgets.append("text").text("\u00A0\u00A0Color schemes:\u00A0")
+        var radio_color_schemes = divWidgets.selectAll("span#color_scheme")
+            .data(color_schemes)
+            .enter().append("span");
+        radio_color_schemes
+            .append("input")
+            .attr("type", "radio")
+            .attr("name", "color_scheme")
+            .attr("value", function (d) { return d; })
+            .property("checked", function (d) {
+                //console.log("color scheme d"+d+" / "+ current_color_scheme+"=>"+(d==current_color_scheme));
+                return d == current_color_scheme;
+            })
+            .on("change", function (d) {
+                current_color_scheme = d.srcElement.value
+                console.log("Color scheme changed to " + d.srcElement.value);
+                update_plot()
+            })
+        radio_color_schemes
+            .append("label")
+            .text(function (d) { return d; })
+
+        //------------------------------------------------------------------
+        // The SVG saving function (Based on https://stackoverflow.com/questions/23218174/how-do-i-save-export-an-svg-file-after-creating-an-svg-with-d3-js-ie-safari-an)
+        //------------------------------------------------------------------
+
+        var export_svg = function () {
+            console.log("Exporting SVG..")
+            //get svg source.
+            var serializer = new XMLSerializer();
+            var source = serializer.serializeToString(svg.node());
+
+            //add name spaces.
+            if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+                source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+            }
+            if (!source.match(/^<svg[^>]+"http\:\/\/www\.w3\.org\/1999\/xlink"/)) {
+                source = source.replace(/^<svg/, '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+            }
+
+            //add xml declaration
+            source = '<?xml version="1.0" standalone="no"?>\r\n' + source;
+
+            //convert svg source to URI data scheme.
+            var url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+
+            //set url value to a element's href attribute.
+            var lnk = document.getElementById("svg_link");
+            console.log(lnk)
+            lnk.href = url;
+            lnk.click()
+        }
+
+        divWidgets.append("span")
+            .append("button")
+            .attr("name", "export_svg")
+            .attr("download", "output.svg")
+            .text("Export SVG")
+            .on("click", export_svg)
+        // divWidgets.append("span")
+        //     .append("a")
+        //     .attr("name", "svg_link")
+        //     .text("ss")
+
+        //------------------------------------------------------------------
+        // Tooltip
+        //------------------------------------------------------------------
+
+        divWidgets.append("text").text("\u00A0\u00A0Description:\u00A0")
+        var tooltip = divWidgets.append("text").attr("name", "tooltip")
+
+        var get_job_description = function (event, d) {
+            if (d.job_id < 0)
+                return ''
+            var j = jobs.filter((d2) => d2.id == d.job_id)
+            if (j.length != 1)
+                console.warning("Could not find job " + d.job_id + " entry")
+            return j[0].desc
+
+            // return '@'+event.clientX+','+event.clientY+' Job '+d.job_id
+        }
+
+        //------------------------------------------------------------------
+        // Declare the SVG placeholder
+        //------------------------------------------------------------------
+
+        var svg = divSvg
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", [0, 0, width, height])
+            .attr("style", "max-width: 100%; height: auto;")
+
+        // Define the failure patterns
+        var defs = svg.append('defs')
+        //Link failures
+        defs.append('pattern')
+            .attr('id', 'linkFailurePattern')
+            .attr('patternUnits', 'userSpaceOnUse')
+            .attr('width', 4)
+            .attr('height', 4)
+            .append('path')
+            .attr('d', 'M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2')
+            .attr('stroke', '#FF0000')
+            .attr('stroke-width', 1);
+        //Node failures
+        defs.append('pattern')
+            .attr('id', 'nodeFailurePattern')
+            .attr('patternUnits', 'userSpaceOnUse')
+            .attr('width', 4)
+            .attr('height', 4)
+            .append('path')
+            .attr('d', 'M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2')
+            .attr('stroke', '#00FF00')
+            .attr('stroke-width', 1);
+        //Timeout failures
+        defs.append('pattern')
+            .attr('id', 'timeoutPattern')
+            .attr('patternUnits', 'userSpaceOnUse')
+            .attr('width', 4)
+            .attr('height', 4)
+            .append('path')
+            .attr('d', 'M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2')
+            .attr('stroke', '#0000FF')
+            .attr('stroke-width', 1);
+        //A clip path for rectangles
+        //defs.append("clipPath")
+        //    .attr("id","clip")
+        // var bbox = element.getBoundingClientRect()
+        //console.log('bbox='+bbox)
+        //console.log('bbox_x='+bbox.x)
+
+
+        const gx = svg.append("g")
+        const gy = svg.append("g")
+        const gGrid = svg.append("g");
+
+        //------------------------------------------------------------------
+        // Zooming glue logic
+        //------------------------------------------------------------------
+
+        function zoomed(event) {
+            console.log("Received zoom event")
+            console.log(event.transform)
+            zoom_transform = event.transform
+            //  const zx = event.transform.rescaleX(x).interpolate(d3.interpolateRound);
+            //  const zy = event.transform.rescaleY(y).interpolate(d3.interpolateRound);
+            //  rects.attr("transform", transform).attr("stroke-width", 5 / transform.k);
+            // gx.call(xAxis, zx);
+            // gy.call(yAxis, zy);
+            // gGrid.call(grid, zx, zy);
+            update_plot()
+        }
+
+
+        const zoom = d3.zoom()
+            .scaleExtent([1, 1000])
+            .on("zoom", zoomed)
+            .constrain(
+                function (transform, extent, translateExtent) {
+                    var dx0 = transform.applyX(0),
+                        dx1 = max_time == undefined ? 0 : transform.applyX(max_time),
+                        dy0 = transform.applyY(0),
+                        dy1 = max_y == undefined ? 0 : transform.invertY(max_y)
+                    console.log("transform=" + transform + " dx1=" + dx0 + " dy1=" + dy0) // " extent="+extent+" translateExtent="+translateExtent)
+                    var dx = dx0 < 0 ? 0 : -dx0
+                    // dx=  dx1 < 0 ? -dx1 :  dx
+                    var dy = 0 // dy0 > 0 ?   0  : -dy0
+                    //  dy=  dy1 > 0 ? -dy1 :  dy 
+                    return transform.translate(dx, dy)
+                }
+            );
+
+
+
+        svg.call(zoom).call(zoom.transform, d3.zoomIdentity);
+        //svg .append("rect")
+        //    .attr("width",width-marginLeft-marginRight)
+        //    .attr("height",height-marginTop-marginBottom)
+        //    .attr("x",marginLeft)
+        //    .attr("y",marginTop)
+        //    .attr("fill","yellow")
+        //    .attr("name","background");
+
+        //------------------------------------------------------------------
+        // Load input data...
+        //------------------------------------------------------------------
+
+        d3.csv('http://localhost:8000/rectangles.csv', d3.autoType).then(function (data) {
+            console.log(data)
+            rectangles = data
+            update_plot()
+        })
+
+        d3.csv('http://localhost:8000/jobs.csv', d3.autoType).then(function (data) {
+            console.log(data)
+            jobs = data
+            update_plot()
+        })
+    </script>
+</head>
+
+<body>
+    <div id="widgets_div">
+        <a id="svg_link" href="">Export link</a>
+    </div>
+    <div id="svg_div">
+    </div>
+</body>
+
+</html>

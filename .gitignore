@@ -1,0 +1,33 @@
+~*
+.~*
+__pycache__
+*.orig
+#CMake related files
+CMakeFiles/**
+tests/CMakeFiles/**
+cmake_install.cmake
+CMakeCache.txt
+CTestTestfile.cmake
+DartConfiguration.tcl
+Makefile
+#Build and tmp files
+build/**
+results/**
+Testing/**
+tmp/**
+bin/**
+lib/**
+.vscode/launch.json
+scripts/venv/**
+#Generated source files 
+src/common/config.hpp
+src/profile/pmpi_binding.cpp
+#test files
+tests/tmp/**
+tests/CMakeLists.txt
+tests/apps/*/trace.index
+tests/apps/*/traffic*
+tests/apps/*/traces/**
+tests/collectives/**
+tests/synth/**
+

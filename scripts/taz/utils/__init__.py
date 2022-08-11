@@ -1,0 +1,1 @@
+all = ["dictionary", "ranges", "parsing"]

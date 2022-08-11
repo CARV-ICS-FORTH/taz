@@ -1,0 +1,13 @@
+// Copyright 2022 Fabien Chaix
+// SPDX-License-Identifier: LGPL-2.1-only
+OMPI_DECLSPEC  int MPI_Comm_c2f(MPI_Comm comm);
+OMPI_DECLSPEC  int MPI_Abort(MPI_Comm comm, int errorcode);
+OMPI_DECLSPEC  int MPI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+                                  int target_rank, MPI_Aint target_disp, int target_count,
+                                  MPI_Datatype target_datatype, MPI_Op op, MPI_Win win);
+OMPI_DECLSPEC  int MPI_Add_error_class(int *errorclass);
+OMPI_DECLSPEC  int MPI_Add_error_code(int errorclass, int *errorcode);
+OMPI_DECLSPEC  int MPI_Add_error_string(int errorcode, const char *string);
+OMPI_DECLSPEC  int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+                                 void *recvbuf, int recvcount,
+                                 MPI_Datatype recvtype, MPI_Comm comm);

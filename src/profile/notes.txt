@@ -1,0 +1,46 @@
+1. Generate traces with libtazprof.so 
+2. Consolidate/augment traces with tool taztrace
+3. Apply trace in taz
+
+
+Talk about variable encoding (uint32_t with 1<<31 set)
+
+
+#1. Generate a flatbuffer schema for primitives
+#   -> one table that incorporates fields = arguments for all primitives
+#   -> All caps Enum for primitive names
+#   
+
+#2. Generate C/C++ file for MPI->PMPI mapping
+#   ->action=TRACE => Measure, PMPI forwarding, Measure, Push full flatbuffer object
+#   ->action=REPORT=> Measure, PMPI forwarding, Measure, Push empty flatbuffer object
+#   ->action=IGNORE=> PMPI forwarding
+#   ->action=ABORT=>  PMPI_Abort
+
+#3. Create C/C++ for parsing
+#   -> Huge switch-case by func
+#   -> Retrieve and check relevant fields
+#   -> call corresponding engine function
+
+
+Trace format
+===========
+
+Use flatbuffer (big features set) or colfer (high performance) for serialization
+
+Structure:
+
+- Header
+	- program + args
+	- number of ranks
+	- MPI library version
+	- Environment
+	- hostname for each rank
+	- metric types e.g. exact(aboslute_time) uniform(diff_time) twomodes(l2_misses)
+	- metric fields e.g absolute_time, diff_time.mean,diff_time.std,l2_misses.mean_a,l2_misses.std_a,l2_misses.ratio_ab,l2_misses.mean_b,l2_misses.std_b
+- Primitive instances
+	- An array of tables (in the flatbuffer meaning) defineing the parameters for a primitive. Multiple primitive calls in the trace may point to the same instance
+- CallsTrace
+	- A tree of calls
+	- Non Leaves  (type JUM) compare a variable with specific values and jump to another entry
+	- Leaves (type EXEC, EXEC_LAST) contain a vector of uint64_t containing metrics 

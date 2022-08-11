@@ -1,0 +1,13 @@
+// Copyright 2022 Fabien Chaix
+// SPDX-License-Identifier: LGPL-2.1-only
+// IDL file for the Taz property, to be included where needed
+
+namespace fbs.taz.profile;
+
+table Property {
+   name:           string;
+   v_ints:         [long];
+   v_floats:       [double];
+   v_str:          [string];
+}
+

@@ -1,0 +1,27 @@
+// Copyright 2022 Fabien Chaix
+// SPDX-License-Identifier: LGPL-2.1-only
+
+include "property.fbs";
+
+namespace fbs.taz.profile;
+
+table Matrix {
+    name : string;
+    ncols: uint32; 
+    nrows: uint32; 
+    approx_data : [ubyte]; // The log2 of actual amount
+    exact_data : [uint64]; // The actual amount
+    properties : [Property];
+    //If present, this vector defines the structure of a sparse matrix.
+    //In that case, if any data is present, it is used based on this structure
+    //If data is not present, the amount is 1 wherever matrix element is set, and 0 otherwise
+    //Each operation is composed of:
+    // a type  (b7:b6): COLUMN_STEP,COLUMN_STEP_2B, ROW_STEP, GROUP
+    // a value: b5:b0 for COLUMN_STEP, ROW_STEP, GROUP; b4:b0 and next byte for COLUMN_STEP_2B
+    sparse_ops : [ubyte];
+}
+
+
+root_type Matrix;
+
+file_identifier "TAZM";

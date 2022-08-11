@@ -1,0 +1,52 @@
+// Copyright 2022 Fabien Chaix
+// SPDX-License-Identifier: LGPL-2.1-only
+//Main IDL file for the Taz MPI profile library
+
+include  "instances.fbs";
+include  "property.fbs";
+
+namespace fbs.taz.profile;
+
+table ProfileHeader {
+    program:      string;
+    args:         [string];
+    env:          [string];
+    world_rank:   int32;
+    n_ranks:      int32;
+    hosts:        [string];
+    metrics:      [string];
+    metric_fields:[string];
+    properties:   [Property];        
+}
+
+enum TraceStepType : byte {
+    EXEC,
+    BRANCH,
+    RETURN,
+    EXIT
+}
+
+//Initially I tried a fancy union scheme but Flatbuffer could not generate code for Python..
+table TraceStep {
+    type: TraceStepType;
+
+    //Valid for EXEC step types
+    exec_instance:      PrimitiveInstance;
+    exec_metric_fields: [uint64]; 
+
+    //Valid for BRANCH step type
+    branch_variable:    uint32;
+    branch_var_values:  [uint64];
+    branch_step_indices:[uint64];
+}
+
+table ProfileFile {
+    header:       ProfileHeader;
+    steps:        [TraceStep];
+    instances:    [PrimitiveInstance];
+}
+
+
+root_type ProfileFile;
+
+file_identifier "TAZP";

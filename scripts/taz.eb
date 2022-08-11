@@ -1,0 +1,35 @@
+#Copyright 2022 Fabien Chaix
+#SPDX-License-Identifier: LGPL-2.1-only
+name = 'Taz'
+version = '0.1'
+homepage = 'https://carvgit.ics.forth.gr/chaix/taz'
+description = "Initial test for easybuild Taz"
+toolchain = {'name':'GCC', 'version':'12.3.0'}
+
+sources = [{
+    'filename': 'taz_archive.tar.gz',
+    'git_config': {
+        'url': 'https://carvgit.ics.forth.gr/chaix',
+        'repo_name': 'taz',
+        'tag': 'juelich_v1',
+        'recursive': True,
+        'keep_git_dir': True,
+    },
+}]
+
+builddependencies = [
+    ('Boost', '1.82.0'),
+    ('CMake', '3.26.3'),
+]
+
+
+#sources = ['taz-master.tar.gz']
+easyblock = 'CMakeMake'
+preconfigopts = ''
+configopts = '-DCMAKE_AR=gcc-ar -DENABLE_SCOTCH=1 -DENABLE_FLATBUFFERS=1 -DADD_HEAVY_TESTS=0 -DCMAKE_BUILD_TYPE=Release'
+prebuildopts = ''
+moduleclass = 'tools'
+preinstallopts = ''
+modextrapaths = {}
+
+modloadmsg = ''

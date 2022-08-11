@@ -1,0 +1,200 @@
+
+N ranks 
+n is the current rank
+R the root rank (when applicable)
+L the number of collective levels
+l is the current level
+M is the initial message size
+m is current message size
+
+FOr generality, we assume non blocking messages generating request 
+We denote dependencies as After(Req1, Req2,...)
+We denote messages as  Req(idx)=Comm(x,y,m)
+
+ltrunc(x,p)=((x>>p)<<p)
+diff_mod(x,y,m)=(x+m-y) mod m
+ceil_mod(x,m)=(x+m-1) mod m
+Basic linear
+============
+
+L=1
+for n < N
+  for n2 < N-1
+    if n2>=n
+      n2=n2+1
+    Req(1,{n,n2})+= Comm(n,n2,M) After(Req(-1,n),Req(-1,n2))  
+
+Bruck
+=====
+
+L=ceil(log2(N))
+m=R*M/2  (at most)
+for l < L 
+  for n < N
+    n2= (n + 2^l ) mod N
+    Req(l,{n,n2})=Comm(n,n2,m) After(Req(n,l-1),Req(n2,l-1))
+
+Recursive doubling (rdb) with constant message size (barrier,reduce)
+====================================================================
+
+L=floor(log2(N))
+N2=2^L
+rem=N-N2
+
+for n < N
+  if n > N2
+    n2=n-N2
+    Req(0,{n,n2})=Comm(n,n2,M) After(Req(-1,n),Req(-1,n2))
+  elif n > rem
+    Req(0,n)=Req(-1,n)
+
+for l < L 
+  for n < N2
+    n2=n xor (2^l)
+    if n2 > N2
+	  Req(l+1,n)=Req(l,n)
+	else
+	  Req(l+1,{n,n2})=Comm(n,n2,M) After(Req(n,l),Req(n2,l))
+	                 +Comm(n2,n,M) After(Req(n,l),Req(n2,l))
+
+for n < N
+  if n > N2
+    n2=n-N2
+    Req(L+1,{n,n2})=Comm(n,n2,M) After(Req(0,n),Req(L,n2))
+  elif n > rem
+    Req(L+1,n)=Req(L,n)
+
+Recursive doubling (rdb) with exponential message size
+======================================================
+
+L=floor(log2(N))
+N2=2^L
+rem=N-N2
+m[N]={M,....,M}
+
+for l < L 
+  mask=(2^l)
+  for n < N
+    n2=n xor mask
+    if n2 < N
+	  Req(l+1,{n,n2})=Comm(n,n2,M) After(Req(l,n),Req(l,n2))
+	                 +Comm(n2,n,M) After(Req(l,n),Req(l,n2))
+	  mn=m[n]
+	  m[n]+=m[n2]
+	  m[n2]+=mn
+	  
+	(propagate missing values in a tree-like communication)
+    dst_tree_root = ltrunc(n2,l)
+    rank_tree_root = ltrunc(n,l)	 
+    if dst_tree_root + mask > N
+      comp = N - rank_tree_root - mask
+	  for k = l downto 1
+		tmp_mask = 2^(k-1)	  
+        n2 = rank xor tmp_mask
+        tree_root = ltrunc(rank,k)
+        if n2 > n and n < tree_root + comp and n2 >= tree_root + comp			
+			Req(l+1,{n,n2})=Comm(n,n2,M) After(Req(l+1,n),Req(l+1,n2))
+			m[n2]+=m[n]
+        tmp_mask = tmp_mask/2
+
+Binomial tree
+=======================
+
+L=ceil(log2(N))
+for l < L
+  mask=2^(L-l-1)
+  for n < N
+    nr=diff_mod(n,R,N)
+	if nr + mask < N
+	  n2 = n + mask mod N
+	  Req(l,{n,n2})=Comm(n,n2,M) After(Req(l-1,n),Req(l-1,n2))
+		
+
+Split bintree with segment size S
+==================================
+
+m[2] = {0,0}
+m[0] = ltrunc(M + 1,1)
+m[1] = M-m[0] 
+num_segments[2] = {ceil_mod(m[0],S),ceil_mod(m[1],S)}
+if S > m[0] 
+  use linear agorithm
+
+(Root splits the buffer in 2 and sends segmented message down the branches)
+
+nodes[N]={root}
+next_nodes[N]={}
+L=ceil(log2(N))
+for l < L
+  for n in nodes
+    nr=diff_mod(n,R,N)
+    lr=nr mod 2
+    C=children(n,tree)
+    next_nodes=next_nodes+C
+	for s < num_segments[lr]
+	  for n2 in C
+	    Req(l,{n,n2})=Comm(n,n2,S) After(Req(l,n),Req(l-1,n2)) 
+  nodes=next_nodes
+
+for nr < ltrunc(N-1,2)
+  lr=nr mod 2
+  n=(R+nr) mod N
+  if lr == 0
+    n2= (n+1) mod N
+  else
+    n2= diff_mod(n,1,N)
+  Req(L,{n,n2})=Comm(n,n2,S) After(Req(L-1,n),Req(L-1,n2)) 
+
+if N mod 2 == 0
+  n2=diff_mod(R,1,N)      
+  Req(L,{R,n2})=Comm(n,n2,m[1]) After(Req(L-1,R),Req(L-1,n2)) 
+
+
+Pipeline with segment size S
+==================================
+
+nodes[N]={root}
+next_nodes[N]={}
+L=ceil(log2(N))
+for l < L
+  for n in nodes
+    nr=diff_mod(n,R,N)
+    lr=nr mod 2
+    C=children(n,tree)
+    next_nodes=next_nodes+C
+	for s < num_segments[lr]
+	  for n2 in C
+	    Req(l,{n,n2})+=Comm(n,n2,S) After(Req(l-1,n),Req(l-1,n2)) 
+  nodes=next_nodes
+
+
+SMP linear with C cores per SMP
+===============================
+
+SMP=ceil_mod(N,C)
+L=C+SMP
+num_segments=M/S
+
+if R !=0
+  Req(0,{0,R})+=Comm(R,0,M) After(Req(-1,0),Req(-1,R)) 
+ 
+for l < SMP
+  n=l*C
+  n2=(l+1)*c
+  n3=n+1
+  for s < num_segments
+    Req(<l,s>,{n,n2})=Comm(n,n2,S) After(Req(<l-1,s>,n),Req(0,n2)) 
+	if n3 < N
+      Req(<l,s>,{n,n3})=Comm(n,n3,S) After(Req(<l-1,s>,n),Req(0,n2)) 
+
+for SMP <= l < L
+  for i < SMP
+    n=i*C+ (l-SMP) +1
+    n2=n+1
+	if n2 < N
+  	  for s < num_segments
+	    Req(<l,s>,{n,n2})=Comm(n,n2,S) After(Req(<l-1,s>,n),Req(0,n2)) 
+	  
+
+
+
