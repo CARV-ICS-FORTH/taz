@@ -15,6 +15,8 @@ set(ENABLE_FLATBUFFERS    OFF     CACHE BOOL      "Force disabling Flatbuffers (
 set(ADD_HEAVY_TESTS       OFF     CACHE BOOL      "Add compute-heavy (~hours) tests to the CTest environment")
 set(PROFILE_MPI_FLAVOR    "ompi"  CACHE STRING    "Select MPI flavor to use.")
 set(PROFILE_GENERATE_FBS  OFF     CACHE BOOL      "Generate flatbuffer (otherwise just reuse header already generated)")
+set(GENERATE_VENV         ON      CACHE BOOL      "Generate a local Python Virtual Environment (venv)to ensure scripts compatibility")
+set(ENABLE_LTO            ON      CACHE BOOL      "Allow Link Time Optimization (LTO) for tas targets") 
 
 #------------------------------------------------------------------------
 #
@@ -23,18 +25,25 @@ set(PROFILE_GENERATE_FBS  OFF     CACHE BOOL      "Generate flatbuffer (otherwis
 #------------------------------------------------------------------------
 
 include(CheckIPOSupported)
-check_ipo_supported(RESULT supported OUTPUT error)
-#
-#if( supported )
-#    message(STATUS "IPO / LTO enabled")
-#else()
-#    message(STATUS "IPO / LTO not supported: <${error}>")
-#endif()
+if (ENABLE_LTO)
+    check_ipo_supported(RESULT supported OUTPUT error)
+    if( supported )
+        message(STATUS "IPO / LTO enabled")
+    else()
+        message(STATUS "IPO / LTO was requested but is not supported: <${error}>")
+    endif()
+else (ENABLE_LTO)
+    message(STATUS "IPO / LTO is disabled")
+endif (ENABLE_LTO)
+
+set(PYTHON_COMMAND "python3" )
 
 if (MSVC)
     message(STATUS "Using MSVC-specific configuration...")
     # warning level 4 and all warnings as errors
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    if (ENABLE_LTO)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif (ENABLE_LTO)
     add_compile_options("/MP")
     add_compile_options("/W4")
     add_compile_options("/wd5030") #/WX
@@ -43,15 +52,16 @@ if (MSVC)
     set(Boost_LIB_PREFIX "lib")
     set(Boost_USE_STATIC_LIBS ON)
     set(Boost_STACKTRACE_VARIANT "windbg_cached")
-    set(PYTHON_COMMAND "python3" )
     set(MPIEXEC_EXECUTABLE "C:\\Program Files\\Microsoft MPI\\Bin\\mpiexec.exe" )
     set(MPI_HOME "C:\\Program Files (x86)\\Microsoft SDKs\\MPI")
     set(TEST_GENERATION_TYPE "msvc")
 else()
     message(STATUS "Using GCC/LLVM-specific configuration...")
     # lots of warnings
-    add_compile_options(-flto=auto -march=native -Wall -Wextra -pedantic )
-
+    add_compile_options(-march=native -Wall -Wextra -pedantic )
+    if (ENABLE_LTO)
+        add_compile_options(-flto=auto )
+    endif (ENABLE_LTO)
     #Make very sure we use Dwarf 4 (and not dwarf 5, so Valgrind is happy)
     # -DSCOTCH_DEBUG_ALL -DSCOTCH_DEBUG_FULL
     set(CMAKE_CXX_FLAGS_DEBUG "-gdwarf-4" CACHE STRING "Flags used by the C++ compiler during debug builds." FORCE)
@@ -59,42 +69,37 @@ else()
     set(CMAKE_EXE_LINKER_FLAGS_DEBUG "-gdwarf-4" CACHE STRING "Flags used for linking binaries during debug builds." FORCE)
     set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "-gdwarf-4" CACHE STRING "Flags used by the shared libraries linker during debug builds." FORCE)
 
-
     set(CMAKE_CXX_FLAGS_DEBUG "-gdwarf-4")
     set(Boost_STACKTRACE_VARIANT "basic")
-    if(NOT EXISTS "${CMAKE_SOURCE_DIR}/scripts/venv")
-        execute_process(COMMAND python3 "-m" "venv" "${CMAKE_SOURCE_DIR}/scripts/venv")
-    endif(NOT EXISTS "${CMAKE_SOURCE_DIR}/scripts/venv")
-    set(PYTHON_COMMAND "${CMAKE_SOURCE_DIR}/scripts/venv/bin/python3" )
+    if(GENERATE_VENV)
+        if(NOT EXISTS "${CMAKE_SOURCE_DIR}/scripts/venv")
+            execute_process(COMMAND python3 "-m" "venv" "${CMAKE_SOURCE_DIR}/scripts/venv")
+        endif(NOT EXISTS "${CMAKE_SOURCE_DIR}/scripts/venv")
+        set(PYTHON_COMMAND "${CMAKE_SOURCE_DIR}/scripts/venv/bin/python3" )
+    endif(GENERATE_VENV)
+
     set(TEST_GENERATION_TYPE "gnu")
 
     #Asan build type to check sanity 
     #Based on https://gitlab.kitware.com/cmake/community/-/wikis/FAQ#how-can-i-extend-the-build-modes-with-a-custom-made-one-
     set(CMAKE_CXX_FLAGS_ASAN "-gdwarf-4 -DSCOTCH_DETERMINISTIC -Wall -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=leak" CACHE STRING
- "Flags used by the C++ compiler during asan builds."
-  FORCE)
-set(CMAKE_C_FLAGS_ASAN "-gdwarf-4 -DSCOTCH_DETERMINISTIC -Wall -pedantic -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=leak" CACHE STRING
-  "Flags used by the C compiler during asan builds."
-  FORCE)
-set(CMAKE_EXE_LINKER_FLAGS_ASAN
-  "-gdwarf-4 -Wl,--warn-unresolved-symbols,--warn-once -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=leak" CACHE STRING
-  "Flags used for linking binaries during asan builds."
-  FORCE)
-set(CMAKE_SHARED_LINKER_FLAGS_ASAN
-  "-gdwarf-4 -Wl,--warn-unresolved-symbols,--warn-once -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=leak" CACHE STRING
-  "Flags used by the shared libraries linker during asan builds."
-  FORCE)
-mark_as_advanced(
-  CMAKE_CXX_FLAGS_ASAN
-  CMAKE_C_FLAGS_ASAN
-  CMAKE_EXE_LINKER_FLAGS_ASAN
-  CMAKE_SHARED_LINKER_FLAGS_ASAN)
-# Update the documentation string of CMAKE_BUILD_TYPE for GUIs
-set(CMAKE_BUILD_TYPE "${CMAKE_BUILD_TYPE}" CACHE STRING
-  "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Asan."
-  FORCE)
-
-    # To get checks built in: 
+        "Flags used by the C++ compiler during asan builds." FORCE)
+    set(CMAKE_C_FLAGS_ASAN "-gdwarf-4 -DSCOTCH_DETERMINISTIC -Wall -pedantic -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=leak" CACHE STRING
+        "Flags used by the C compiler during asan builds." FORCE)
+    set(CMAKE_EXE_LINKER_FLAGS_ASAN
+        "-gdwarf-4 -Wl,--warn-unresolved-symbols,--warn-once -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=leak" CACHE STRING
+        "Flags used for linking binaries during asan builds." FORCE)
+    set(CMAKE_SHARED_LINKER_FLAGS_ASAN
+        "-gdwarf-4 -Wl,--warn-unresolved-symbols,--warn-once -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined -fsanitize=leak" CACHE STRING
+        "Flags used by the shared libraries linker during asan builds." FORCE)
+    mark_as_advanced(
+       CMAKE_CXX_FLAGS_ASAN
+       CMAKE_C_FLAGS_ASAN
+       CMAKE_EXE_LINKER_FLAGS_ASAN
+       CMAKE_SHARED_LINKER_FLAGS_ASAN)
+    # Update the documentation string of CMAKE_BUILD_TYPE for GUIs
+    set(CMAKE_BUILD_TYPE "${CMAKE_BUILD_TYPE}" CACHE STRING
+        "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Asan." FORCE)
 endif()
 
 #------------------------------------------------------------------------
@@ -139,24 +144,27 @@ endif(ENABLE_SCOTCH AND EXISTS "${CMAKE_SOURCE_DIR}/extern/scotch/CMakeLists.txt
 #Detect presence of the Flatbuffer submodule
 set(FLATBUFFERS_ENABLED OFF)
 if( ENABLE_FLATBUFFERS AND EXISTS "${CMAKE_SOURCE_DIR}/extern/flatbuffers/CMakeLists.txt")
-	message(VERBOSE "Flatbuffers are enabled.")
-	set(FLATBUFFERS_ENABLED 1)
+    message(VERBOSE "Flatbuffers are enabled.")
+    set(FLATBUFFERS_ENABLED 1)
     set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_SOURCE_DIR}/extern/flatbuffers/cmake/Modules")
     add_subdirectory("extern/flatbuffers")
 else( ENABLE_FLATBUFFERS AND EXISTS "${CMAKE_SOURCE_DIR}/extern/flatbuffers/CMakeLists.txt")
-	message(STATUS "Flatbuffers are disabled (ENABLE_FLATBUFFERS=${ENABLE_FLATBUFFERS}).")
+    message(STATUS "Flatbuffers are disabled (ENABLE_FLATBUFFERS=${ENABLE_FLATBUFFERS}).")
 endif( ENABLE_FLATBUFFERS AND EXISTS "${CMAKE_SOURCE_DIR}/extern/flatbuffers/CMakeLists.txt")
 
 #Get the Python environment ready
-message(VERBOSE "Initializing Python environment...")
-execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "ensurepip" "--upgrade" )
-execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "pip")
-execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "numpy")
-execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "matplotlib")
-execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "flatbuffers")
-execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "gravis")
-execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "jupyter")
-execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" " python-language-server")
+
+if(GENERATE_VENV)
+    message(VERBOSE "Initializing Python Virtual Environment (venv) ...")
+    execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "ensurepip" "--upgrade" )
+    execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "pip")
+    execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "numpy")
+    execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "matplotlib")
+    execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "flatbuffers")
+    execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "gravis")
+    execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" "jupyter")
+    execute_process(COMMAND "${PYTHON_COMMAND}" "-m" "pip" "install"  "--upgrade" " python-language-server")
+endif(GENERATE_VENV)
 
  
 
