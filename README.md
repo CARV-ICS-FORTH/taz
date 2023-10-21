@@ -449,4 +449,4 @@ In addition, note that we use `clang-format` to format automatically the source 
 
 Taz has been developped in the [DEEP-SEA project](https://www.deep-projects.eu/). We thankfully acknowledge the support of the European Commission and the Greek General Secretariat for Research and Innovation under the EuroHPC Programme through project DEEP-SEA (GA-955606). National contributions from the involved state members (including the Greek General Secretariat for Research and Innovation) match the EuroHPC funding.
 
-Taz is distributed under the Apache License, Version 2.0; of which a copy is enclosed.
+Taz is distributed under the GNU LESSER GENERAL PUBLIC LICENSE (LGPL), Version 2.1; of which a copy is enclosed.
