@@ -344,9 +344,9 @@ of dependencies and communications at once, without requiring message matching.
 
 Our tool is targeted at resiliency modeling. We do not model communication faults that are recovered by the transport layer. Instead, we focus on failures that cannot be recovered, and provoke the termination of applications. Therefore, our tool comprises:
 
-* Generic failure injection following random distribution as described in Section~\ref{sec:simu:faults}, and simple deterministic profiles for validation purposes.
-* Node failures, which cause all jobs allocated to the node to abort immediately, as described in Subsection~\ref{sec:simu:simgrid:awareness}.
-* Link failures, which cause all jobs using the link to abort instantaneously, as described in Subsection~\ref{sec:simu:simgrid:awareness}.
+* Generic failure injection following random distribution as described and simple deterministic profiles for validation purposes.
+* Node failures, which cause all jobs allocated to the node to abort immediately.
+* Link failures, which cause all jobs using the link to abort instantaneously.
 * Job abortion at the resource manager level.
 
 ### Topologies
@@ -409,11 +409,13 @@ As for applications, we utilize time-independent traces from a panel of benchmar
 
 Benchmark traces used for the case study
 
-With the information provided by the above table, we can leverage \autoref{eq:simu:node-cond-fail-prob} and \autoref{eq:simu:partition-fail-prob} to estimate the probability that some node of the allocated partition will fail  before the job is completed. However, instead of searching globally for contiguous partitions with minimum job failure probability, we iteratively select nodes such that a predefined reliability target $R$ is satisfied. This greedy approach has low complexity, but results in a lot of interferences across jobs, which diminishes the system efficiency as we will see.
+With the information provided by the above table, we can estimate the probability that some node of the allocated partition will fail  before the job is completed. However, instead of searching globally for contiguous partitions with minimum job failure probability, we iteratively select nodes such that a predefined reliability target $R$ is satisfied. This greedy approach has low complexity, but results in a lot of interferences across jobs, which diminishes the system efficiency as we will see.
 
-Given a target job reliability $R$, we aim to preserve the relation presented in \autoref{eq:simu:rel_target} as we pick nodes ${n_1,..,n_i,..,n_N}$ for the job. Roughly, this equation expresses that we accept a node $i$ with failure probability $p^f_{n_i}$ only if filling the remaining job requirement using nodes with similar reliability did meet the process reliability target. \autoref{eq:simu:rel_criterion} presents the resulting criterion used to veto nodes for each job.
+Given a target job reliability $R$, we aim to preserve the relation presented in the equation below as we pick nodes ${n_1,..,n_i,..,n_N}$ for the job. Roughly, this equation expresses that we accept a node $i$ with failure probability $p^f_{n_i}$ only if filling the remaining job requirement using nodes with similar reliability did meet the process reliability target.
 
 $$ R \leq  \left( 1 - p^f_{n_i} \right)^{N-i} \prod_{n=n_1}^{n_{i-1}} \left( 1 - p^f_n \right)$$
+
+The equation below presents the resulting criterion used to veto nodes for each job:
 
 $$ p^f_{n_i}  \leq \left( \frac{R}{\prod_{n=n_1}^{n_{i-1}} \left( 1 - p^f_n \right)}   \right) ^\frac{1}{N-i} $$
 
