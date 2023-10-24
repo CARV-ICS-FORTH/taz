@@ -387,6 +387,11 @@ public:
     return vertex_label_index;
   }
 
+  ind_t &velo(size_t index) {
+    assert(index < velotab.size());
+    return velotab[index];
+  }
+
   static void test();
 };
 

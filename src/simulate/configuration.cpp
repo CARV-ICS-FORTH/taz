@@ -228,6 +228,9 @@ po::options_description get_options_description() {
     ("rm_traffic_scotch_nthreads",po::value<int>()->default_value(1),
     "When using 'traffic' mapping, the number of threads to be used to perform mapping. "
     "For reproductibility concerns, check rm_traffic_scotch_random_seed.")
+    ("rm_traffic_reliability_ppm",po::value<int>()->default_value(0),
+    "When using 'traffic' mapping, the weight of each node for potential mapping of a job is : \n"
+    " 1000000 - <probability of failure during job> * rm_traffic_reliability_ppm ")
     ("rm_dump_job_mappings",po::value<bool>()->default_value(false),
     "Dump each job core mapping to file mapping_XXX.tazm, where XXX is the job ID.")
     ;

@@ -47,6 +47,7 @@ void PartitionedGraph::_add_partition(const ApproxMatrix &mat,
         edgetmp.push_back(start_vert + j);
         if (ratio != 1)
           acc /= ratio;
+        assert(acc > 0);
         edlotmp.push_back(acc);
         arc_count++;
         // vertex_is_disconnected = false;

@@ -17,7 +17,7 @@ cd ${SCRIPTS_PATH}/..
 #3: test label
 function do_test () {
   echo "Run $3 tests for build $1"
-  cmake -DADD_HEAVY_TESTS=$2 -DCMAKE_BUILD_TYPE=$1 ${CMAKE_ARGS} . &> "test_$3_$1.log"
+  cmake -DADD_HEAVY_TESTS=$2 -DPROFILE_GENERATE_FBS=1 -DCMAKE_BUILD_TYPE=$1 ${CMAKE_ARGS} . &> "test_$3_$1.log"
   make -j${NPROCS}                                                 &>> "test_$3_$1.log"
 #  ctest  -j${NPROCS} ${CTEST_ARGS}                                 &>> "test_$3_$1.log"
 }

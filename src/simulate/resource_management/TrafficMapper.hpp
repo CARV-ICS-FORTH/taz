@@ -21,18 +21,9 @@ class TrafficMapper : public AbstractJobMapper {
   // currently
   SCOTCH_Arch *mapping_arch;
 
-  void _update_arch() {
+  void _update_arch(double expected_duration) {
 
-    _build_system_arch();
-
-    if (mapping_arch != nullptr) {
-      SCOTCH_archExit(mapping_arch);
-      SCOTCH_memFree(mapping_arch);
-    }
-
-    mapping_arch = SCOTCH_archAlloc();
-    check_result(SCOTCH_archInit(mapping_arch), 0);
-
+    // 1. Clean up the list of available hosts
     if (available_hosts_needs_sorting) {
       std::sort(available_hosts.begin(), available_hosts.end());
       available_hosts.resize(n_available_hosts);
@@ -47,22 +38,24 @@ class TrafficMapper : public AbstractJobMapper {
       available_hosts_needs_sorting = false;
     }
 
-#ifdef SHOW_DEBUG
-#endif
+    // If reliability-aware scheme, update the weight of vertices
+    auto rm_traffic_reliability_ppm =
+        ctx.vm["rm_traffic_reliability_ppm"].as<int>();
+    if (rm_traffic_reliability_ppm > 0) {
+      assert_always(
+          rm_traffic_reliability_ppm < 500000,
+          "Cannot allow maximum reliability penalty to be more than half, "
+          "otherwise we risk double allocation.");
+      for (auto h : available_hosts) {
+        CoreId id(h, 0, 0);
+        double reliability_penalty =
+            ctx.engine->get_core_cdf(id.get_core(), expected_duration) *
+                rm_traffic_reliability_ppm +
+            0.5;
+        topology_graph.velo(h) = 1000000 - (int)reliability_penalty;
+      }
+    }
 
-    LOG_DEBUG << "Available hosts before mapping: " << available_hosts
-              << std::endl;
-    check_result(SCOTCH_archSub(mapping_arch, system_arch, n_available_hosts,
-                                available_hosts.data()),
-                 0);
-  }
-
-  std::vector<SCOTCH_Num>::iterator get_host_iterator(SCOTCH_Num host_index) {
-    return std::find(available_hosts.begin(), available_hosts.end(),
-                     host_index);
-  }
-
-  void _build_system_arch() {
     if (system_arch != nullptr) {
       SCOTCH_archExit(system_arch);
       SCOTCH_memFree(system_arch);
@@ -79,6 +72,25 @@ class TrafficMapper : public AbstractJobMapper {
     check_result(SCOTCH_archBuild2(system_arch, &context_graph, 0, nullptr), 0);
     // res = SCOTCH_archBuild(system_arch, graph, 0, nullptr,
     // partitionning_strat);
+
+    if (mapping_arch != nullptr) {
+      SCOTCH_archExit(mapping_arch);
+      SCOTCH_memFree(mapping_arch);
+    }
+
+    mapping_arch = SCOTCH_archAlloc();
+    check_result(SCOTCH_archInit(mapping_arch), 0);
+
+    LOG_DEBUG << "Available hosts before mapping: " << available_hosts
+              << std::endl;
+    check_result(SCOTCH_archSub(mapping_arch, system_arch, n_available_hosts,
+                                available_hosts.data()),
+                 0);
+  }
+
+  std::vector<SCOTCH_Num>::iterator get_host_iterator(SCOTCH_Num host_index) {
+    return std::find(available_hosts.begin(), available_hosts.end(),
+                     host_index);
   }
 
 public:
@@ -116,19 +128,19 @@ public:
     n_available_hosts = 0;
     for (int i = 0; i < vertnbr; i++) {
       // Do not include routers...
-      if (topology_graph.get_velotab()[i] > 0) {
+      if (topology_graph.velo(i) > 0) {
         available_hosts.push_back(i);
         n_available_hosts++;
       }
     }
     available_hosts_needs_sorting = false;
-
-    _build_system_arch();
   }
 
   virtual ~TrafficMapper() {
-    SCOTCH_archExit(system_arch);
-    SCOTCH_memFree(system_arch);
+    if (system_arch) {
+      SCOTCH_archExit(system_arch);
+      SCOTCH_memFree(system_arch);
+    }
     if (mapping_arch) {
       SCOTCH_archExit(mapping_arch);
       SCOTCH_memFree(mapping_arch);
@@ -165,7 +177,7 @@ public:
 
   virtual IntervalSet map_job(int job_id, const JobDescriptor &desc,
                               simtime_t /*time*/, resind_t required_hosts,
-                              double /*expected_duration*/) {
+                              double expected_duration) {
 
     IntervalSet alloc;
     // Cannot satisfy mapping, just return empty allocation
@@ -198,7 +210,7 @@ public:
                                          &context_jobs_graph),
                  0);
 
-    _update_arch();
+    _update_arch(expected_duration);
 
     auto nparts = SCOTCH_archSize(mapping_arch);
     SCOTCH_Strat mapping_strat;
@@ -277,9 +289,15 @@ public:
     footprint += GET_HEAP_FOOTPRINT(topology_graph);
     footprint += GET_HEAP_FOOTPRINT(available_hosts);
     auto scotch_footprint = SCOTCH_memCur();
-    assert_always(scotch_footprint >= 0,
-                  " You need to compile libscotch with COMMON_MEMORY_TRACE "
-                  "flag set");
-    return footprint + scotch_footprint;
+    static bool show_warning = true;
+    if (scotch_footprint < 0) {
+      if (show_warning)
+        LOG_INFO << " You need to compile libscotch with COMMON_MEMORY_TRACE "
+                    "flag set to get accurate footprint."
+                 << std::endl;
+      show_warning = false;
+    } else
+      footprint += scotch_footprint;
+    return footprint;
   }
 };
